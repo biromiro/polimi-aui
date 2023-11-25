@@ -1,6 +1,7 @@
-from flask import Flask, request
+from flask import Flask  # , request
 from flask_restful import Resource, Api, fields
 from flask_cors import CORS, cross_origin
+# import speechsdk from azure.cognitiveservices.speech
 
 from flask_apispec import marshal_with, doc, use_kwargs
 from flask_apispec.views import MethodResource
@@ -9,9 +10,10 @@ from marshmallow import Schema, fields
 from apispec import APISpec
 from apispec.ext.marshmallow import MarshmallowPlugin
 from flask_apispec.extension import FlaskApiSpec
-import json
 
-from apis.gpt import GPT
+from apis.openai import OpenAI
+from apis.azure import Azure
+
 from profile_handler import ProfileHandler
 
 app = Flask(__name__)
@@ -94,7 +96,7 @@ class ExerciseResource(MethodResource, Resource):
 
     class ExerciseResponseSchema(Schema):
         status = fields.Str(dump_default='Success')
-        exercise = fields.Str(dump_default='No exercise available.')
+        content = fields.Dict(dump_default="No content.")
         error = fields.Str(dump_default='No error.')
 
     @doc(description='Generates and retrieves an exercise.', tags=['Exercise'])
@@ -111,16 +113,127 @@ class ExerciseResource(MethodResource, Resource):
 
         print(type_of_exercise, profile)
 
-        gpt = GPT(type_of_exercise, profile)
-        answer = gpt.gen_exercise()
+        openai = OpenAI(type_of_exercise, profile)
+        answer = openai.gen_exercise()
         return answer
+
+
+class DescriptionExerciseResource(MethodResource, Resource):
+
+    class DescriptionExerciseRequestSchema(Schema):
+        profile = fields.Str(required=False)
+
+    class DescriptionExerciseResponseSchema(Schema):
+        status = fields.Str(dump_default='Success')
+        content = fields.Dict(dump_default="No content.")
+        error = fields.Str(dump_default='No error.')
+
+    @doc(description='Generates and retrieves a description exercise.', tags=['Exercise'])
+    @use_kwargs(DescriptionExerciseRequestSchema, location=('json'))
+    @marshal_with(DescriptionExerciseResponseSchema)  # marshalling
+    def post(self, **kwargs):
+        profile = kwargs.get("profile")
+
+        if profile:
+            profile = profile_handler.get_profile(kwargs.get("profile"))
+        else:
+            profile = {}
+
+        print(profile)
+
+        openai = OpenAI(profile)
+        answer = openai.gen_image_description_exercise()
+        return answer
+
+
+class ImageResource(MethodResource, Resource):
+
+    class ImageRequestSchema(Schema):
+        text = fields.Str(required=True)
+
+    class ImageResponseSchema(Schema):
+        status = fields.Str(dump_default='Success')
+        content = fields.Dict(dump_default="No content.")
+        error = fields.Str(dump_default='No error.')
+
+    @doc(description='Generates audio from prompt.', tags=['Exercise'])
+    @use_kwargs(ImageRequestSchema, location=('json'))
+    @marshal_with(ImageResponseSchema)  # marshalling
+    def post(self, **kwargs):
+        text = kwargs.get("text")
+
+        print(text)
+
+        answer = OpenAI.gen_dalle(text)
+        return answer
+
+
+class AudioResource(MethodResource, Resource):
+
+    class AudioRequestSchema(Schema):
+        text = fields.Str(required=True)
+
+    class AudioResponseSchema(Schema):
+        status = fields.Str(dump_default='Success')
+        content = fields.Dict(dump_default="No content.")
+        error = fields.Str(dump_default='No error.')
+
+    @doc(description='Generates audio from prompt.', tags=['Exercise'])
+    @use_kwargs(AudioRequestSchema, location=('json'))
+    @marshal_with(AudioResponseSchema)  # marshalling
+    def post(self, **kwargs):
+        text = kwargs.get("text")
+
+        print(text)
+
+        answer = OpenAI.gen_audio(text)
+        return answer
+
+
+class AudioAssessmentResource(MethodResource, Resource):
+
+    class AudioAssessmentRequestSchema(Schema):
+        text = fields.Str(required=True)
+        audio = fields.Str(required=True)
+
+    class AudioAssessmentResponseSchema(Schema):
+        status = fields.Str(dump_default='Success')
+        content = fields.Dict(dump_default="No content.")
+        error = fields.Str(dump_default='No error.')
+
+    @doc(description='Assesses the correctness of the pronunciation of the audio.', tags=['Exercise'])
+    @use_kwargs(AudioAssessmentRequestSchema, location=('json'))
+    @marshal_with(AudioAssessmentResponseSchema)  # marshalling
+    def post(self, **kwargs):
+        text = kwargs.get("text")
+        audio = kwargs.get("audio")
+
+        azure = Azure()
+
+        answer = azure.pronunciation_assessment_continuous_from_file(
+            text, audio)
+        return {
+            'content': answer
+        }
 
 
 api.add_resource(StatusResource, '/')
 docs.register(StatusResource)
 
+api.add_resource(DescriptionExerciseResource, '/gen_description_exercise')
+docs.register(DescriptionExerciseResource)
+
 api.add_resource(ExerciseResource, '/gen_exercise')
 docs.register(ExerciseResource)
+
+api.add_resource(ImageResource, '/gen_image')
+docs.register(ImageResource)
+
+api.add_resource(AudioResource, '/gen_audio')
+docs.register(AudioResource)
+
+api.add_resource(AudioAssessmentResource, '/get_audio_assessment')
+docs.register(AudioAssessmentResource)
 
 api.add_resource(ProfileResource, '/profile')
 docs.register(ProfileResource)
